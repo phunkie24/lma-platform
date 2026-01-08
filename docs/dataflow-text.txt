@@ -1,0 +1,706 @@
+═══════════════════════════════════════════════════════════════════════════════
+                  LMA LOAN PLATFORM - DATA FLOW DIAGRAMS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│                    WORKFLOW 1: LOAN ORIGINATION                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+   START
+     │
+     ▼
+┌─────────────────────┐
+│ User Submits        │  → Input: Loan details (amount, term, purpose,
+│ Loan Application    │           borrower info, collateral)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Frontend Validation │  → Check: Required fields, data types, ranges
+│ & Data Cleanup      │  → Output: Sanitized application data
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ API Gateway         │  → Auth: Verify JWT token
+│ Authentication      │  → Rate Limit: Check request quota
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Loan Service        │  → Save: Application draft to PostgreSQL
+│ Receives Request    │  → Generate: Application ID (UUID)
+└─────────────────────┘
+     │
+     ├────────────────────────────┬────────────────────────────┐
+     │                            │                            │
+     ▼                            ▼                            ▼
+┌────────────────┐     ┌────────────────┐          ┌────────────────┐
+│ KYC/AML Check  │     │ Credit Bureau  │          │ Fraud Detection│
+│                │     │ Integration    │          │                │
+└────────────────┘     └────────────────┘          └────────────────┘
+     │                            │                            │
+     │ Call: External API         │ Call: Experian/           │ ML Model:
+     │ Input: Name, DOB, SSN      │       TransUnion API      │ Anomaly detection
+     │ Output: Pass/Fail          │ Output: Credit score      │ Output: Risk score
+     │        Risk level          │         History           │
+     │                            │                            │
+     └────────────────────────────┴────────────────────────────┘
+                                  │
+                                  ▼
+                    ┌────────────────────────────┐
+                    │ Aggregate Results          │
+                    │ • KYC Status               │
+                    │ • Credit Score             │
+                    │ • Fraud Score              │
+                    └────────────────────────────┘
+                                  │
+                                  ▼
+                          [Decision Gate]
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+              [REJECT]                     [APPROVE]
+                    │                           │
+                    ▼                           ▼
+         ┌──────────────────┐      ┌──────────────────────┐
+         │ Send Rejection   │      │ Pricing Engine       │
+         │ Notification     │      │                      │
+         │ Update Status    │      │ Input: Credit score, │
+         │ Store in DB      │      │        Loan amount,  │
+         └──────────────────┘      │        Market rates  │
+                    │              │                      │
+                    │              │ Process:             │
+                    │              │ 1. Fetch market data │
+                    │              │ 2. Risk premium calc │
+                    │              │ 3. Apply margins     │
+                    │              │                      │
+                    │              │ Output: Interest rate│
+                    │              │         Monthly PMT  │
+                    │              │         Total cost   │
+                    │              └──────────────────────┘
+                    │                          │
+                    │                          ▼
+                    │              ┌──────────────────────┐
+                    │              │ Approval Workflow    │
+                    │              │                      │
+                    │              │ Rules Engine:        │
+                    │              │ • Amount > $1M →     │
+                    │              │   Senior approval    │
+                    │              │ • Risk score > 70 →  │
+                    │              │   Committee review   │
+                    │              │ • Standard → Auto    │
+                    │              └──────────────────────┘
+                    │                          │
+                    │                          ▼
+                    │              ┌──────────────────────┐
+                    │              │ Generate Term Sheet  │
+                    │              │                      │
+                    │              │ Template Engine:     │
+                    │              │ • Load template      │
+                    │              │ • Populate fields    │
+                    │              │ • Apply formatting   │
+                    │              │                      │
+                    │              │ Output: PDF          │
+                    │              │ Store: S3 + metadata │
+                    │              └──────────────────────┘
+                    │                          │
+                    │                          ▼
+                    │              ┌──────────────────────┐
+                    │              │ Update Database      │
+                    │              │                      │
+                    │              │ PostgreSQL:          │
+                    │              │ • Application status │
+                    │              │ • Pricing details    │
+                    │              │ • Document links     │
+                    │              │                      │
+                    │              │ Redis Cache:         │
+                    │              │ • Clear old cache    │
+                    │              │ • Cache new data     │
+                    │              └──────────────────────┘
+                    │                          │
+                    │                          ▼
+                    │              ┌──────────────────────┐
+                    │              │ Send Notification    │
+                    │              │                      │
+                    │              │ Message Queue:       │
+                    │              │ • Push to RabbitMQ   │
+                    │              │                      │
+                    │              │ Notification Svc:    │
+                    │              │ • Email to applicant │
+                    │              │ • SMS alert          │
+                    │              │ • In-app notification│
+                    │              └──────────────────────┘
+                    │                          │
+                    └──────────────────────────┘
+                                  │
+                                  ▼
+                                 END
+
+Data Storage Points:
+━━━━━━━━━━━━━━━━━━
+• PostgreSQL: Applications, approvals, pricing
+• Redis: Session data, rate limit counters
+• S3: Term sheets, uploaded documents
+• Elasticsearch: Indexed for search
+• Audit Log: All actions with timestamps
+
+External API Calls:
+━━━━━━━━━━━━━━━━━━
+• KYC Provider (Jumio, Onfido)
+• Credit Bureau (Experian, TransUnion)
+• Market Data (Bloomberg API)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│                   WORKFLOW 2: DOCUMENT GENERATION                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+   START
+     │
+     ▼
+┌─────────────────────┐
+│ User Selects        │  → UI: Dropdown of available templates
+│ Document Template   │  → Options: Loan agreement, security agreement,
+└─────────────────────┘           promissory note, guarantee
+     │
+     ▼
+┌─────────────────────┐
+│ Document Service    │  → Fetch: Template from S3
+│ Loads Template      │  → Format: DOCX with placeholders
+│                     │  → Version: Latest approved version
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Fetch Loan Data     │  → Query: PostgreSQL
+│ from Database       │  → Join: Multiple tables
+│                     │         (loans, borrowers, terms, collateral)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Populate Template   │  → Process:
+│ with Data           │    1. Replace {{placeholders}}
+│                     │    2. Format currency, dates
+│                     │    3. Insert tables (payment schedule)
+│                     │    4. Add conditionals (if guaranteed)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Regulatory          │  → Check against:
+│ Compliance Check    │    • Truth in Lending Act (TILA)
+│                     │    • Dodd-Frank requirements
+│                     │    • State-specific regulations
+│                     │  → Scan for:
+│                     │    • Required disclosures
+│                     │    • APR calculations
+│                     │    • Fee transparency
+└─────────────────────┘
+     │
+     ├──────────────────────────┐
+     │                          │
+  [FAIL]                    [PASS]
+     │                          │
+     ▼                          ▼
+┌─────────────────┐   ┌──────────────────────┐
+│ Flag Issues     │   │ Generate Final PDF   │
+│ Return for      │   │                      │
+│ Manual Review   │   │ Library: python-docx │
+└─────────────────┘   │         + wkhtmltopdf│
+                      │                      │
+                      │ Output: PDF/A format │
+                      │ Metadata: Embedded   │
+                      └──────────────────────┘
+                                 │
+                                 ▼
+                      ┌──────────────────────┐
+                      │ E-Signature Workflow │
+                      │                      │
+                      │ Integration: DocuSign│
+                      │                      │
+                      │ Process:             │
+                      │ 1. Upload document   │
+                      │ 2. Set signers       │
+                      │ 3. Add signature tags│
+                      │ 4. Send for signature│
+                      │                      │
+                      │ Signers:             │
+                      │ • Borrower(s)        │
+                      │ • Guarantor(s)       │
+                      │ • Lender officer     │
+                      └──────────────────────┘
+                                 │
+                                 ▼
+                      ┌──────────────────────┐
+                      │ Wait for Signatures  │
+                      │                      │
+                      │ Polling: Check status│
+                      │          every 5 min │
+                      │                      │
+                      │ Webhook: Real-time   │
+                      │          updates     │
+                      └──────────────────────┘
+                                 │
+                                 ▼
+                      ┌──────────────────────┐
+                      │ All Signed?          │
+                      └──────────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+                 [NO]                       [YES]
+                    │                         │
+                    ▼                         ▼
+          ┌──────────────────┐    ┌──────────────────────┐
+          │ Send Reminders   │    │ Download Signed PDF  │
+          │ Log Activity     │    │ from DocuSign        │
+          └──────────────────┘    └──────────────────────┘
+                    │                         │
+                    │                         ▼
+                    │              ┌──────────────────────┐
+                    │              │ Store in Vault       │
+                    │              │                      │
+                    │              │ S3 Storage:          │
+                    │              │ • Path: /documents/  │
+                    │              │         {loan_id}/   │
+                    │              │         signed/      │
+                    │              │ • Versioning: Yes    │
+                    │              │ • Encryption: AES-256│
+                    │              │ • Lifecycle: 7 years │
+                    │              │                      │
+                    │              │ PostgreSQL:          │
+                    │              │ • Document metadata  │
+                    │              │ • S3 URI             │
+                    │              │ • Signature dates    │
+                    │              │ • File hash (SHA-256)│
+                    │              └──────────────────────┘
+                    │                         │
+                    │                         ▼
+                    │              ┌──────────────────────┐
+                    │              │ Index for Search     │
+                    │              │                      │
+                    │              │ Elasticsearch:       │
+                    │              │ • Extract text       │
+                    │              │ • Index content      │
+                    │              │ • Add metadata       │
+                    │              └──────────────────────┘
+                    │                         │
+                    │                         ▼
+                    │              ┌──────────────────────┐
+                    │              │ Update Loan Status   │
+                    │              │                      │
+                    │              │ Status: "EXECUTED"   │
+                    │              │ Effective Date: Now  │
+                    │              └──────────────────────┘
+                    │                         │
+                    │                         ▼
+                    │              ┌──────────────────────┐
+                    │              │ Publish Event        │
+                    │              │                      │
+                    │              │ RabbitMQ:            │
+                    │              │ Event: loan.executed │
+                    │              │ Consumers:           │
+                    │              │ • Analytics          │
+                    │              │ • Notification       │
+                    │              │ • Compliance         │
+                    │              └──────────────────────┘
+                    │                         │
+                    └─────────────────────────┘
+                                 │
+                                 ▼
+                                END
+
+Data Storage Points:
+━━━━━━━━━━━━━━━━━━
+• S3: Templates, generated docs, signed docs
+• PostgreSQL: Document metadata, signatures
+• Elasticsearch: Searchable document content
+• Audit Log: Document lifecycle events
+
+External API Calls:
+━━━━━━━━━━━━━━━━━━
+• DocuSign API (e-signature)
+• Compliance API (regulatory checks)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│                  WORKFLOW 3: SECONDARY MARKET TRADING                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+   START
+     │
+     ▼
+┌─────────────────────┐
+│ Lender Lists Loan   │  → Input: Loan ID, ask price, minimum bid
+│ on Trading Platform │  → Validation: Loan status, permissions
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Trading Service     │  → Create: Listing record
+│ Creates Listing     │  → Status: ACTIVE
+│                     │  → Cache: Redis (for fast access)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Publish to          │  → WebSocket: Broadcast to all connected users
+│ Order Book          │  → Message: New listing notification
+│                     │  → Display: Real-time UI update
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Market Data Feed    │  → Fetch: Current market rates
+│ Integration         │  → Source: Bloomberg, Reuters
+│                     │  → Store: TimescaleDB (time-series)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Potential Buyer     │  → Browse: Active listings
+│ Views Listing       │  → Filter: By sector, rating, yield
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Buyer Submits       │  → Input: Bid amount, quantity
+│ Bid/Offer           │  → Validation: Buyer has funds/credit line
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Order Matching      │  → Algorithm:
+│ Engine              │    1. Check price compatibility
+│                     │    2. Match quantity
+│                     │    3. FIFO for equal bids
+│                     │  
+│                     │  → If Match Found → Execute trade
+│                     │  → If No Match → Add to order book
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Trade Executed      │  → Lock: Both parties' records
+│                     │  → Calculate: Settlement amount, fees
+│                     │  → Generate: Trade confirmation ID
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Settlement Process  │  → Steps:
+│                     │    1. Transfer loan ownership
+│                     │    2. Update loan registry
+│                     │    3. Process payment
+│                     │    4. Update credit lines
+│                     │  
+│                     │  → Transaction: ACID (all-or-nothing)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Update Database     │  → PostgreSQL:
+│                     │    • Loan owner updated
+│                     │    • Trade history recorded
+│                     │    • Account balances updated
+│                     │  
+│                     │  → Redis:
+│                     │    • Remove from order book
+│                     │    • Update portfolio cache
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Regulatory          │  → Report to:
+│ Reporting           │    • TRACE (if required)
+│                     │    • Internal compliance
+│                     │    • Audit trail
+│                     │  
+│                     │  → Include: Price, parties, time
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Send Notifications  │  → Buyer: Trade confirmation
+│                     │  → Seller: Sale confirmation
+│                     │  → Ops team: Settlement notice
+│                     │  
+│                     │  → Channels: Email, SMS, in-app
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Update Analytics    │  → Metrics:
+│                     │    • Trade volume
+│                     │    • Price trends
+│                     │    • Market depth
+│                     │    • Time to execute
+│                     │  
+│                     │  → Dashboards: Real-time update
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Generate Trade      │  → PDF document with:
+│ Confirmation Doc    │    • Trade details
+│                     │    • Legal disclaimers
+│                     │    • Settlement instructions
+│                     │  
+│                     │  → Store in S3
+│                     │  → Email to parties
+└─────────────────────┘
+     │
+     ▼
+    END
+
+Real-time Components:
+━━━━━━━━━━━━━━━━━━━━
+• WebSocket: Live order book updates
+• Redis Pub/Sub: Price feed streaming
+• Cache: Hot loan data for quick access
+
+Data Storage:
+━━━━━━━━━━━━
+• PostgreSQL: Trade records, ownership
+• TimescaleDB: Price history, volume
+• Redis: Order book, live positions
+• S3: Trade confirmations
+
+External Integrations:
+━━━━━━━━━━━━━━━━━━━━
+• Market Data API (Bloomberg/Reuters)
+• Payment Rails (Wire, ACH)
+• TRACE Reporting (if applicable)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│                   WORKFLOW 4: ANALYTICS & MONITORING                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+   START (Continuous Background Process)
+     │
+     ▼
+┌─────────────────────┐
+│ Data Collection     │  → Sources:
+│ Layer               │    • PostgreSQL (CDC - Change Data Capture)
+│                     │    • Application logs
+│                     │    • Market data feeds
+│                     │    • User activity tracking
+│                     │  
+│                     │  → Frequency: Real-time streaming
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Data Ingestion      │  → Apache Kafka / RabbitMQ
+│ Pipeline            │  → Topics:
+│                     │    • loan.events
+│                     │    • trade.events
+│                     │    • document.events
+│                     │    • user.activity
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Stream Processing   │  → Apache Spark / Flink (optional)
+│                     │  → Operations:
+│                     │    • Filter irrelevant events
+│                     │    • Aggregate metrics
+│                     │    • Calculate running totals
+│                     │    • Detect anomalies
+└─────────────────────┘
+     │
+     ├──────────────────┬──────────────────┬──────────────────┐
+     │                  │                  │                  │
+     ▼                  ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ ESG Scoring  │  │ Risk         │  │ Portfolio    │  │ Compliance   │
+│              │  │ Assessment   │  │ Analytics    │  │ Monitoring   │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
+     │                  │                  │                  │
+     │                  │                  │                  │
+     ▼                  ▼                  ▼                  ▼
+
+┌─────────────────────┐
+│ ESG SCORING         │
+├─────────────────────┤
+│ Inputs:             │
+│ • Borrower industry │
+│ • Carbon footprint  │
+│ • Social impact     │
+│ • Governance score  │
+│                     │
+│ Model:              │
+│ • Weighted algorithm│
+│ • Industry benchmarks│
+│                     │
+│ Output:             │
+│ • ESG rating (A-F)  │
+│ • Green loan flag   │
+│ • Sustainability %  │
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Store ESG Metrics   │
+│ • PostgreSQL        │
+│ • Update dashboards │
+└─────────────────────┘
+
+┌─────────────────────┐
+│ RISK ASSESSMENT     │
+├─────────────────────┤
+│ Calculations:       │
+│ • Probability of    │
+│   Default (PD)      │
+│ • Loss Given        │
+│   Default (LGD)     │
+│ • Exposure at       │
+│   Default (EAD)     │
+│ • Expected Credit   │
+│   Loss (ECL)        │
+│                     │
+│ Models:             │
+│ • Statistical (SAS) │
+│ • ML (XGBoost)      │
+│                     │
+│ Factors:            │
+│ • Credit score      │
+│ • Loan-to-value     │
+│ • Industry trends   │
+│ • Macro indicators  │
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Risk Alerts         │
+│ • High-risk loans   │
+│ • Concentration     │
+│ • Covenant breaches │
+└─────────────────────┘
+
+┌─────────────────────┐
+│ PORTFOLIO ANALYTICS │
+├─────────────────────┤
+│ Metrics:            │
+│ • Total AUM         │
+│ • Weighted avg rate │
+│ • Duration          │
+│ • Yield curve       │
+│ • Sector breakdown  │
+│ • Geographic dist.  │
+│                     │
+│ Visualizations:     │
+│ • Pie charts        │
+│ • Time series       │
+│ • Heat maps         │
+│ • Scatter plots     │
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Update Dashboards   │
+│ • Grafana           │
+│ • Custom UI         │
+│ • Refresh: 30 sec   │
+└─────────────────────┘
+
+┌─────────────────────┐
+│ COMPLIANCE MONITOR  │
+├─────────────────────┤
+│ Checks:             │
+│ • Regulatory limits │
+│ • Concentration     │
+│ • Documentation     │
+│ • Reporting         │
+│   deadlines         │
+│                     │
+│ Automation:         │
+│ • Daily scans       │
+│ • Exception reports │
+│ • Auto-remediation  │
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Generate Reports    │
+│ • PDF reports       │
+│ • Email to team     │
+│ • Store in S3       │
+└─────────────────────┘
+     │
+     └──────────────────┴──────────────────┴──────────────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Alert Generation     │
+                      │                      │
+                      │ Triggers:            │
+                      │ • Risk > threshold   │
+                      │ • Covenant breach    │
+                      │ • Documentation gap  │
+                      │ • Trade anomaly      │
+                      │                      │
+                      │ Actions:             │
+                      │ • Create ticket      │
+                      │ • Email stakeholders │
+                      │ • PagerDuty alert    │
+                      │ • Log to audit trail │
+                      └──────────────────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Store Analytics      │
+                      │                      │
+                      │ PostgreSQL:          │
+                      │ • Calculated metrics │
+                      │ • Historical trends  │
+                      │                      │
+                      │ Redis:               │
+                      │ • Latest values      │
+                      │ • Dashboard data     │
+                      │                      │
+                      │ TimescaleDB:         │
+                      │ • Time-series data   │
+                      │ • Performance metrics│
+                      └──────────────────────┘
+                                  │
+                                  ▼
+                                [LOOP]
+                                  │
+                      Back to Data Collection
+                                  
+Data Flows:
+━━━━━━━━━━
+PostgreSQL → Kafka → Stream Processor → Analytics Services → Dashboard/Alerts
+
+Storage:
+━━━━━━━━
+• PostgreSQL: Analytical results
+• TimescaleDB: Time-series metrics
+• Redis: Real-time cache
+• S3: Historical reports
+
+Frequency:
+━━━━━━━━━━
+• Real-time: Trade monitoring, risk alerts
+• Hourly: Portfolio rebalancing
+• Daily: ESG updates, compliance reports
+• Weekly: Executive dashboards
+
+═══════════════════════════════════════════════════════════════════════════════
+                          END OF DATA FLOW DIAGRAMS
+═══════════════════════════════════════════════════════════════════════════════

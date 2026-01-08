@@ -1,0 +1,395 @@
+═══════════════════════════════════════════════════════════════════════════════
+                 LMA LOAN PLATFORM - DEPLOYMENT ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│                           END USERS (GLOBAL)                                │
+│                                                                             │
+│   [Lenders] [Borrowers] [Arrangers] [Traders] [Compliance Officers]       │
+│                                                                             │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │
+                                   │ HTTPS
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         GLOBAL EDGE NETWORK                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              Route 53 (DNS & Health Checks)                 │          │
+│   │   • Failover Routing                                        │          │
+│   │   • Latency-based Routing                                   │          │
+│   │   • Health Monitoring                                       │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         CloudFront CDN (150+ Edge Locations)                │          │
+│   │   • Static Assets (JS, CSS, Images)                         │          │
+│   │   • SSL/TLS Termination                                     │          │
+│   │   • Compression & Caching                                   │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │                     AWS WAF                                 │          │
+│   │   • DDoS Protection (Shield Advanced)                       │          │
+│   │   • SQL Injection Prevention                                │          │
+│   │   • Rate Limiting                                           │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │
+                                   ▼
+═══════════════════════════════════════════════════════════════════════════════
+                    PRIMARY REGION: US-EAST-1 (N. Virginia)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      AVAILABILITY ZONE 1A (us-east-1a)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         Application Load Balancer (ALB) - Primary           │          │
+│   │   • Health Checks                                           │          │
+│   │   • SSL/TLS Termination                                     │          │
+│   │   • Path-based Routing                                      │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              ECS Cluster / EKS Cluster                      │          │
+│   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │          │
+│   │  │ Loan Service │  │  Doc Service │  │Trade Service │    │          │
+│   │  │  (3 tasks)   │  │  (3 tasks)   │  │  (3 tasks)   │    │          │
+│   │  │ CPU: 2 vCPU  │  │ CPU: 2 vCPU  │  │ CPU: 4 vCPU  │    │          │
+│   │  │ RAM: 4 GB    │  │ RAM: 4 GB    │  │ RAM: 8 GB    │    │          │
+│   │  └──────────────┘  └──────────────┘  └──────────────┘    │          │
+│   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │          │
+│   │  │Analytics Svc │  │  Auth Service│  │ Notify Svc   │    │          │
+│   │  │  (2 tasks)   │  │  (2 tasks)   │  │  (2 tasks)   │    │          │
+│   │  │ CPU: 2 vCPU  │  │ CPU: 1 vCPU  │  │ CPU: 1 vCPU  │    │          │
+│   │  │ RAM: 4 GB    │  │ RAM: 2 GB    │  │ RAM: 2 GB    │    │          │
+│   │  └──────────────┘  └──────────────┘  └──────────────┘    │          │
+│   │                                                             │          │
+│   │  Auto-scaling: Target CPU 70%, Min: 2, Max: 10 per service│          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              RDS PostgreSQL (Primary)                       │          │
+│   │   Instance: db.r6g.xlarge (4 vCPU, 32 GB RAM)             │          │
+│   │   Storage: 500 GB SSD (io2)                                │          │
+│   │   Backup: Automated daily, 7-day retention                 │          │
+│   │   Encryption: AES-256                                       │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │           ElastiCache Redis Cluster (Primary)               │          │
+│   │   Instance: cache.r6g.large (2 vCPU, 13.07 GB)            │          │
+│   │   Nodes: 3 (1 Primary + 2 Replicas)                        │          │
+│   │   Sharding: Enabled                                         │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ Synchronous Replication
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      AVAILABILITY ZONE 1B (us-east-1b)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         Application Load Balancer (ALB) - Standby           │          │
+│   │   • Active-Active Configuration                             │          │
+│   │   • Automatic Failover                                      │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              ECS Cluster / EKS Cluster                      │          │
+│   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │          │
+│   │  │ Loan Service │  │  Doc Service │  │Trade Service │    │          │
+│   │  │  (3 tasks)   │  │  (3 tasks)   │  │  (3 tasks)   │    │          │
+│   │  └──────────────┘  └──────────────┘  └──────────────┘    │          │
+│   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │          │
+│   │  │Analytics Svc │  │  Auth Service│  │ Notify Svc   │    │          │
+│   │  │  (2 tasks)   │  │  (2 tasks)   │  │  (2 tasks)   │    │          │
+│   │  └──────────────┘  └──────────────┘  └──────────────┘    │          │
+│   │                                                             │          │
+│   │  Mirror configuration from AZ-1A                           │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │            RDS PostgreSQL (Standby Replica)                 │          │
+│   │   • Automatic Failover (< 60 seconds)                       │          │
+│   │   • Continuously Synchronized                               │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                              │                                              │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │           ElastiCache Redis Cluster (Standby)               │          │
+│   │   • Read Replicas                                           │          │
+│   │   • Automatic Failover                                      │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SHARED SERVICES (Multi-AZ)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │                S3 Buckets (Multi-AZ)                        │          │
+│   │  • lma-static-assets (CloudFront Origin)                    │          │
+│   │  • lma-documents (Versioning Enabled, Encrypted)            │          │
+│   │  • lma-backups (Lifecycle Policies)                         │          │
+│   │  • lma-logs (Immutable, 7-year retention)                   │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │            Elasticsearch Service (3 AZ)                     │          │
+│   │  • Instance: r6g.large.search (3 nodes)                     │          │
+│   │  • Storage: 100 GB per node                                 │          │
+│   │  • Full-text search for loans & documents                   │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │             Amazon MQ (RabbitMQ) / MSK (Kafka)              │          │
+│   │  • Message Queue for async processing                       │          │
+│   │  • Multi-broker setup (High Availability)                   │          │
+│   │  • Durability: Persistent messages                          │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              Lambda Functions (Serverless)                  │          │
+│   │  • Document processing                                      │          │
+│   │  • Email notifications                                      │          │
+│   │  • Scheduled jobs (cron)                                    │          │
+│   │  • Auto-scaling to zero                                     │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+              DISASTER RECOVERY REGION: EU-WEST-1 (Ireland)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    STANDBY INFRASTRUCTURE (Warm Standby)                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              RDS PostgreSQL (Read Replica)                  │          │
+│   │   • Cross-Region Replication (Async)                        │          │
+│   │   • Can be promoted to Primary in disaster                  │          │
+│   │   • Replication Lag: < 5 seconds                            │          │
+│   │   • RTO: 15 minutes | RPO: 5 seconds                        │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              S3 Bucket (Cross-Region Replication)           │          │
+│   │   • Automatic replication from primary region               │          │
+│   │   • Documents, backups, logs                                │          │
+│   │   • Versioning enabled                                      │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │           ECS Tasks (Minimal, Scaled on Demand)             │          │
+│   │   • 1 task per service (standby mode)                       │          │
+│   │   • Auto-scaling triggers on failover                       │          │
+│   │   • Full capacity in 10-15 minutes                          │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   [ACTIVATION PROCESS]                                                      │
+│   1. Route 53 detects primary region failure                               │
+│   2. DNS switches to EU-WEST-1                                             │
+│   3. RDS Read Replica promoted to Primary                                  │
+│   4. ECS services auto-scale to full capacity                              │
+│   5. Services online in ~15 minutes                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                     MONITORING & OBSERVABILITY STACK
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         CloudWatch (AWS Native Monitoring)                  │          │
+│   │  • Logs: All application & system logs                      │          │
+│   │  • Metrics: CPU, Memory, Network, Custom metrics            │          │
+│   │  • Alarms: Threshold-based alerting                         │          │
+│   │  • Dashboards: Real-time performance views                  │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              X-Ray (Distributed Tracing)                    │          │
+│   │  • End-to-end request tracing                               │          │
+│   │  • Service map visualization                                │          │
+│   │  • Latency analysis                                         │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         Datadog / New Relic (Optional APM)                  │          │
+│   │  • Application Performance Monitoring                       │          │
+│   │  • Real User Monitoring (RUM)                               │          │
+│   │  • Custom dashboards                                        │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              PagerDuty / OpsGenie                           │          │
+│   │  • Incident alerting                                        │          │
+│   │  • On-call rotations                                        │          │
+│   │  • Slack/Teams integration                                  │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                          SECURITY INFRASTRUCTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              AWS IAM (Identity & Access)                    │          │
+│   │  • Service roles for ECS tasks                              │          │
+│   │  • Cross-account access                                     │          │
+│   │  • MFA enforcement                                          │          │
+│   │  • Least privilege principle                                │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         AWS Secrets Manager / HashiCorp Vault               │          │
+│   │  • Database credentials                                     │          │
+│   │  • API keys                                                 │          │
+│   │  • Encryption keys                                          │          │
+│   │  • Automatic rotation                                       │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              AWS KMS (Key Management)                       │          │
+│   │  • Data encryption at rest                                  │          │
+│   │  • S3, RDS, EBS encryption                                  │          │
+│   │  • Customer-managed keys                                    │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │         GuardDuty (Threat Detection)                        │          │
+│   │  • Malicious activity detection                             │          │
+│   │  • Compromised instances                                    │          │
+│   │  • Reconnaissance attacks                                   │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+│   ┌────────────────────────────────────────────────────────────┐          │
+│   │              Security Hub (Compliance)                      │          │
+│   │  • CIS benchmarks                                           │          │
+│   │  • PCI DSS, GDPR compliance checks                          │          │
+│   │  • Automated remediation                                    │          │
+│   └────────────────────────────────────────────────────────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            CI/CD PIPELINE FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+   ┌──────────┐       ┌──────────┐       ┌──────────┐       ┌──────────┐
+   │  GitHub  │  -->  │  GitHub  │  -->  │   ECR    │  -->  │   ECS    │
+   │   Repo   │       │ Actions  │       │ Registry │       │  Deploy  │
+   └──────────┘       └──────────┘       └──────────┘       └──────────┘
+        │                   │                   │                   │
+        │                   │                   │                   │
+   Code Push          1. Build Image      Push Image         Rolling Update
+   by Developer       2. Run Tests        Tag: v1.2.3        Blue-Green Deploy
+                      3. Security Scan                       
+                      4. Code Quality                        Health Checks
+                      5. Docker Build                        Auto-rollback
+
+   [DEPLOYMENT STAGES]
+   
+   Developer Push → GitHub
+           ↓
+   GitHub Actions Triggered
+           ↓
+   ┌────────────────────┐
+   │  BUILD STAGE       │
+   │  • Install deps    │
+   │  • Compile TS      │
+   │  • Bundle assets   │
+   └────────────────────┘
+           ↓
+   ┌────────────────────┐
+   │  TEST STAGE        │
+   │  • Unit tests      │
+   │  • Integration     │
+   │  • E2E tests       │
+   │  Coverage: >80%    │
+   └────────────────────┘
+           ↓
+   ┌────────────────────┐
+   │  SECURITY STAGE    │
+   │  • Snyk scan       │
+   │  • Trivy scan      │
+   │  • SAST analysis   │
+   └────────────────────┘
+           ↓
+   ┌────────────────────┐
+   │  DOCKER STAGE      │
+   │  • Build image     │
+   │  • Optimize layers │
+   │  • Tag image       │
+   └────────────────────┘
+           ↓
+   Push to ECR
+           ↓
+   ┌────────────────────┐
+   │  DEPLOY STAGING    │
+   │  • Update task def │
+   │  • Deploy new ver  │
+   │  • Smoke tests     │
+   └────────────────────┘
+           ↓
+   [APPROVAL GATE - Manual]
+           ↓
+   ┌────────────────────┐
+   │  DEPLOY PRODUCTION │
+   │  • Blue deployment │
+   │  • Health checks   │
+   │  • Switch traffic  │
+   │  • Monitor         │
+   │  • Rollback ready  │
+   └────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                           KEY DEPLOYMENT METRICS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  PERFORMANCE                                                                │
+│  • API Response Time: < 200ms (p95)                                         │
+│  • Database Query Time: < 50ms (p95)                                        │
+│  • Page Load Time: < 2 seconds                                              │
+│  • Concurrent Users: 10,000+                                                │
+│                                                                             │
+│  AVAILABILITY                                                               │
+│  • Uptime SLA: 99.9% (< 43 minutes downtime/month)                          │
+│  • RTO (Recovery Time): < 15 minutes                                        │
+│  • RPO (Recovery Point): < 5 seconds                                        │
+│                                                                             │
+│  SCALABILITY                                                                │
+│  • Horizontal Scaling: Auto (CPU > 70%)                                     │
+│  • Max Instances: 10 per service                                            │
+│  • Database Connections: 200 per instance                                   │
+│                                                                             │
+│  SECURITY                                                                   │
+│  • Encryption: At rest (AES-256), In transit (TLS 1.3)                     │
+│  • Vulnerability Scanning: Daily                                            │
+│  • Penetration Testing: Quarterly                                           │
+│                                                                             │
+│  COST OPTIMIZATION                                                          │
+│  • Reserved Instances: 70% of base load                                     │
+│  • Spot Instances: Non-critical workloads                                   │
+│  • Auto-shutdown: Dev/test environments off-hours                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
