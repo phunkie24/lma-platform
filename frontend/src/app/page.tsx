@@ -45,7 +45,7 @@ export default function HomePage() {
           <div className="text-center space-y-8 animate-fade-in">
             <div className="inline-block">
               <span className="px-4 py-2 bg-crimson/10 text-crimson rounded-full text-sm font-semibold">
-                Hackathon Winner 2024
+                Hackathon Winner 2026
               </span>
             </div>
             <h1 className="text-6xl md:text-7xl lg:text-8xl font-display font-black leading-tight">
@@ -191,30 +191,30 @@ export default function HomePage() {
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><Link href="#" className="hover:text-crimson transition-colors">Features</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Pricing</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Demo</Link></li>
+                <li><Link href="/features" className="hover:text-crimson transition-colors">Features</Link></li>
+                <li><Link href="/pricing" className="hover:text-crimson transition-colors">Pricing</Link></li>
+                <li><Link href="/demo" className="hover:text-crimson transition-colors">Demo</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><Link href="#" className="hover:text-crimson transition-colors">About</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Contact</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Careers</Link></li>
+                <li><Link href="/about" className="hover:text-crimson transition-colors">About</Link></li>
+                <li><Link href="/contact" className="hover:text-crimson transition-colors">Contact</Link></li>
+                <li><Link href="/careers" className="hover:text-crimson transition-colors">Careers</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><Link href="#" className="hover:text-crimson transition-colors">Privacy</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Terms</Link></li>
-                <li><Link href="#" className="hover:text-crimson transition-colors">Security</Link></li>
+                <li><Link href="/privacy" className="hover:text-crimson transition-colors">Privacy</Link></li>
+                <li><Link href="/terms" className="hover:text-crimson transition-colors">Terms</Link></li>
+                <li><Link href="/security" className="hover:text-crimson transition-colors">Security</Link></li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 LMA Edge. All rights reserved.</p>
+            <p>&copy; 2026 LMA Edge. All rights reserved.</p>
           </div>
         </div>
       </footer>

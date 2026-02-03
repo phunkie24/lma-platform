@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { cacheGet } from '../config/redis';
 
 export interface AuthRequest extends Request {
@@ -69,13 +69,11 @@ export const authorize = (...roles: string[]) => {
 };
 
 export const generateToken = (payload: { id: string; email: string; role: string }): string => {
-  return jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as string;
+  return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn } as SignOptions);
 };
 
 export const generateRefreshToken = (payload: { id: string }): string => {
-  return jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
-  });
+  const expiresIn = (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as string;
+  return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn } as SignOptions);
 };

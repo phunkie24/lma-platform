@@ -140,10 +140,23 @@ export default function LoginPage() {
           {/* Demo Credentials */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-2 font-semibold">Demo Credentials:</p>
-            <p className="text-sm text-gray-500 font-mono">
-              Email: admin@lmaplatform.com<br />
-              Password: admin123
-            </p>
+            <div className="space-y-2">
+              <div className="text-sm text-gray-500 font-mono">
+                <strong className="text-gray-700">Admin:</strong><br />
+                Email: admin@lma.com<br />
+                Password: admin123456
+              </div>
+              <div className="text-sm text-gray-500 font-mono">
+                <strong className="text-gray-700">Lender:</strong><br />
+                Email: lender@lma.com<br />
+                Password: lender123456
+              </div>
+              <div className="text-sm text-gray-500 font-mono">
+                <strong className="text-gray-700">Borrower:</strong><br />
+                Email: borrower@lma.com<br />
+                Password: borrower123456
+              </div>
+            </div>
           </div>
 
           {/* Sign Up Link */}
